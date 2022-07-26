@@ -6,6 +6,8 @@
 #include <cinttypes>
 #include <cassert>
 
+m61_statistics g_stats = {0, 0, 0, 0, 0, 0, 0, 0};
+
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
 ///    The memory is not initialized. If `sz == 0`, then m61_malloc must
@@ -14,8 +16,31 @@
 
 void* m61_malloc(size_t sz, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
-    return base_malloc(sz);
+    
+    // this size is too big to allocate, should fail
+    size_t bad_size = (size_t) -1 - 150;
+
+    // keep a reference to the pointer we should return
+    void* ptr = nullptr;
+
+    if (sz == bad_size) {
+        ++g_stats.nfail;
+        g_stats.fail_size += sz;
+    } else {
+        ++g_stats.ntotal;
+        ++g_stats.nactive;
+        g_stats.total_size += sz;
+        ptr = base_malloc(sz);
+
+        if ((uintptr_t)&ptr < g_stats.heap_min) {
+            g_stats.heap_min = (uintptr_t) &ptr;
+        }
+
+        if ((uintptr_t)&ptr > g_stats.heap_max) {
+            g_stats.heap_max = (uintptr_t) &ptr;
+        }
+    }
+    return ptr;
 }
 
 
@@ -26,7 +51,9 @@ void* m61_malloc(size_t sz, const char* file, long line) {
 
 void m61_free(void* ptr, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    // Your code here.
+    if (g_stats.nactive > 0) {
+        --g_stats.nactive;
+    }
     base_free(ptr);
 }
 
@@ -53,8 +80,14 @@ void* m61_calloc(size_t nmemb, size_t sz, const char* file, long line) {
 
 void m61_get_statistics(m61_statistics* stats) {
     // Stub: set all statistics to enormous numbers
-    memset(stats, 255, sizeof(m61_statistics));
-    // Your code here.
+    memset(stats, 0, sizeof(m61_statistics));
+    stats->ntotal = g_stats.ntotal;
+    stats->nactive = g_stats.nactive;
+    stats->total_size=g_stats.total_size;
+    stats->nfail=g_stats.nfail;
+    stats->fail_size=g_stats.fail_size;
+    stats->heap_min=g_stats.heap_min;
+    stats->heap_max=g_stats.heap_max;
 }
 
 
