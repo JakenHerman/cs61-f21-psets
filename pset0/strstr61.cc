@@ -18,10 +18,25 @@ char* mystrstr(const char* s1, const char* s2, const char* s3) {
         return nullptr;
         // bracket notation
     } else if (c == '2') {
-        
+      while (*s1) {
+        const char* s1try = s1;
+        const char* s2try = s2;
+        while (*s2try && *s2try == *s1try) {
+            ++s2try;
+            ++s1try;
+        }
+        if (!*s2try) {
+            return (char*) s1;
+        }
+        ++s1;
     }
-    
-    return nullptr; 
+    // special case
+    if (!*s2) {
+        return (char*) s1;
+    }
+    return nullptr;
+  }
+  return nullptr;
 }
 
 int main(int argc, char* argv[]) {
