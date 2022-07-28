@@ -5,8 +5,16 @@
 #include <cstdio>
 #include <cinttypes>
 #include <cassert>
+#include <iostream>
 
 m61_statistics g_stats = {0, 0, 0, 0, 0, 0, 0, 0};
+
+struct header_information {
+    size_t sz;
+    header_information* next;
+    header_information* prev;
+    void* payload;
+};
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -16,31 +24,43 @@ m61_statistics g_stats = {0, 0, 0, 0, 0, 0, 0, 0};
 
 void* m61_malloc(size_t sz, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    
-    // this size is too big to allocate, should fail
-    size_t bad_size = (size_t) -1 - 150;
 
-    // keep a reference to the pointer we should return
-    void* ptr = nullptr;
+    size_t size_with_header = sizeof(struct header_information) + sz;
 
-    if (sz == bad_size) {
+    // Attempt to allocate memory.
+    void* ptr = base_malloc(size_with_header);
+
+    if (ptr == nullptr) {
+        // Memory allocation failed.
         ++g_stats.nfail;
         g_stats.fail_size += sz;
+        return nullptr;
     } else {
+        // Memory succesfully allocated.
         ++g_stats.ntotal;
         ++g_stats.nactive;
         g_stats.total_size += sz;
-        ptr = base_malloc(sz);
 
-        if ((uintptr_t)&ptr < g_stats.heap_min) {
+        // attach header metadata to pointer
+        header_information* header = (header_information*) ptr;
+        header->sz = sz;
+        header->next = nullptr;
+        header->prev = nullptr;
+
+        void *payload = (void*) ((char*) ptr + sizeof(struct header_information));
+        header->payload = payload;
+        
+        g_stats.active_size += header->sz;
+
+        if ((uintptr_t)&ptr <= g_stats.heap_min) {
             g_stats.heap_min = (uintptr_t) &ptr;
         }
 
-        if ((uintptr_t)&ptr > g_stats.heap_max) {
-            g_stats.heap_max = (uintptr_t) &ptr;
+        if ((uintptr_t)&ptr + sz >= g_stats.heap_max) {
+            g_stats.heap_max = (uintptr_t) &ptr + sz;
         }
+        return payload;
     }
-    return ptr;
 }
 
 
@@ -51,10 +71,20 @@ void* m61_malloc(size_t sz, const char* file, long line) {
 
 void m61_free(void* ptr, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
-    if (g_stats.nactive > 0) {
-        --g_stats.nactive;
+    
+    if (ptr == nullptr) {
+        return;
     }
-    base_free(ptr);
+
+    struct header_information *alloc_information = (struct header_information*) ptr - 1;
+
+    if (alloc_information->payload == ptr) {
+        // Track that the active size has decreased, as well as the active count.
+        g_stats.active_size -= alloc_information->sz;
+        --g_stats.nactive;
+
+        base_free(alloc_information);
+    }
 }
 
 
@@ -83,11 +113,12 @@ void m61_get_statistics(m61_statistics* stats) {
     memset(stats, 0, sizeof(m61_statistics));
     stats->ntotal = g_stats.ntotal;
     stats->nactive = g_stats.nactive;
-    stats->total_size=g_stats.total_size;
-    stats->nfail=g_stats.nfail;
-    stats->fail_size=g_stats.fail_size;
-    stats->heap_min=g_stats.heap_min;
-    stats->heap_max=g_stats.heap_max;
+    stats->total_size = g_stats.total_size;
+    stats->nfail = g_stats.nfail;
+    stats->fail_size = g_stats.fail_size;
+    stats->heap_min = g_stats.heap_min;
+    stats->heap_max = g_stats.heap_max;
+    stats->active_size = g_stats.active_size;
 }
 
 
