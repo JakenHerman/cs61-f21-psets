@@ -27,6 +27,13 @@ void* m61_malloc(size_t sz, const char* file, long line) {
 
     size_t size_with_header = sizeof(struct header_information) + sz;
 
+    // check for integer overflow
+    if (size_with_header <= sz) {
+        ++g_stats.nfail;
+        g_stats.fail_size += sz;
+        return nullptr;
+    }
+
     // Attempt to allocate memory.
     void* ptr = base_malloc(size_with_header);
 
@@ -70,9 +77,15 @@ void* m61_malloc(size_t sz, const char* file, long line) {
 ///    does nothing. The free was called at location `file`:`line`.
 
 void m61_free(void* ptr, const char* file, long line) {
-    (void) file, (void) line;   // avoid uninitialized variable warnings
-    
+    (void) file, (void) line;   // avoid uninitialized variable warnings    
+
     if (ptr == nullptr) {
+        return;
+    }
+
+    // check if pointer is in heap
+    if ((uintptr_t) ptr < g_stats.heap_min || (uintptr_t) ptr > g_stats.heap_max) {
+        printf("MEMORY BUG: invalid free of pointer {%p}, not in heap\n", ptr);
         return;
     }
 
@@ -96,8 +109,23 @@ void m61_free(void* ptr, const char* file, long line) {
 ///    location `file`:`line`.
 
 void* m61_calloc(size_t nmemb, size_t sz, const char* file, long line) {
-    // Your code here (to fix test019).
-    void* ptr = m61_malloc(nmemb * sz, file, line);
+    void* ptr = nullptr;
+
+    // store the total size of the allocation
+    size_t total_size = nmemb * sz;
+
+    // check for integer overflow
+    if (total_size / nmemb != sz) {
+        ++g_stats.nfail;
+        g_stats.fail_size += total_size;
+        return nullptr;
+    }
+
+    // attempt to allocate memory if the size does not cause an overflow
+    if (total_size / nmemb == sz) {
+        ptr = m61_malloc(total_size, file, line);
+    }
+
     if (ptr) {
         memset(ptr, 0, nmemb * sz);
     }
